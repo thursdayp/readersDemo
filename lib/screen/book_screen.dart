@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; 
+import 'package:http/http.dart' as http;
+import 'package:readers/screen/favotite_screen.dart';
 import 'dart:convert';
-import 'package:readers/screen/favotite_screen.dart'; 
-import 'package:readers/screen/goal_screen.dart';
+
 import 'package:readers/screen/homgpage_screen.dart';
+import 'package:readers/screen/goal_screen.dart';
 import 'package:readers/screen/store_screen.dart';
 
 class BookScreen extends StatefulWidget {
@@ -17,22 +20,20 @@ class _BookScreenState extends State<BookScreen> {
   int _selectedIndex = 2;
   late Future<List<Book>> futureBooks;
 
-  // สร้างรายการเก็บหนังสือที่ถูกบันทึก
+  // List to store bookmarked books
   List<Book> savedBooks = [];
 
   @override
   void initState() {
     super.initState();
-    futureBooks =
-        fetchBooksFromOpenLibrary('Novel'); // เริ่มต้นค้นหาหนังสือหมวดนิยายทั้งหมด
+    futureBooks = fetchBooksFromOpenLibrary('Novel', http.Client()); // Start with 'Novel' category
   }
 
-  Future<List<Book>> fetchBooksFromOpenLibrary(String query) async {
+  Future<List<Book>> fetchBooksFromOpenLibrary(String query, http.Client client) async {
     try {
-      final response = await http
-          .get(Uri.parse(
-              'https://openlibrary.org/search.json?q=$query&limit=10'))
-          .timeout(const Duration(seconds: 10)); // กำหนด timeout
+      final response = await client
+          .get(Uri.parse('https://openlibrary.org/search.json?q=$query&limit=10'))
+          .timeout(const Duration(seconds: 20)); // Set timeout
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -45,6 +46,8 @@ class _BookScreenState extends State<BookScreen> {
       } else {
         throw Exception('Failed to load data, status: ${response.statusCode}');
       }
+    } on TimeoutException catch (_) {
+      throw Exception('Request timed out. Please try again.');
     } catch (e) {
       throw Exception('Error: $e');
     }
@@ -52,7 +55,7 @@ class _BookScreenState extends State<BookScreen> {
 
   void searchBooks(String query) {
     setState(() {
-      futureBooks = fetchBooksFromOpenLibrary(query);
+      futureBooks = fetchBooksFromOpenLibrary(query, http.Client());
     });
   }
 
@@ -76,7 +79,7 @@ class _BookScreenState extends State<BookScreen> {
             MaterialPageRoute(builder: (context) => const GoalsScreen()),
           );
           break;
-        case 2: // เปลี่ยนกลับไปยังหน้าหนังสือ
+        case 2:
           break;
         case 3:
           Navigator.pushReplacement(
@@ -135,13 +138,13 @@ class _BookScreenState extends State<BookScreen> {
                         child: const Text('ค้นหา'),
                         onPressed: () {
                           searchBooks(searchController.text);
-                          Navigator.of(context).pop(); // ปิด dialog
+                          Navigator.of(context).pop(); // Close dialog
                         },
                       ),
                       TextButton(
                         child: const Text('ยกเลิก'),
                         onPressed: () {
-                          Navigator.of(context).pop(); // ปิด dialog
+                          Navigator.of(context).pop(); // Close dialog
                         },
                       ),
                     ],
@@ -180,9 +183,9 @@ class _BookScreenState extends State<BookScreen> {
                         child: SizedBox(
                           width: 100,
                           height: 150,
-                          child: book.coverImage != null
+                          child: book.coverImage.isNotEmpty
                               ? Image.network(
-                                  book.coverImage!,
+                                  book.coverImage,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) {
                                     return const Center(
@@ -228,8 +231,7 @@ class _BookScreenState extends State<BookScreen> {
                               IconButton(
                                 icon: const Icon(Icons.bookmark_border),
                                 onPressed: () {
-                                  _toggleBookmark(
-                                      book); // เรียกใช้งานฟังก์ชัน bookmark
+                                  _toggleBookmark(book); // Call bookmark function
                                 },
                               ),
                             ],
@@ -249,9 +251,9 @@ class _BookScreenState extends State<BookScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.flag), label: 'Goals'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.library_books), label: 'library'),
+              icon: Icon(Icons.library_books), label: 'Library'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.favorite), label: 'Favortie'),
+              icon: Icon(Icons.favorite), label: 'Favorite'),
           BottomNavigationBarItem(
               icon: Icon(Icons.shopping_cart), label: 'Store'),
         ],
@@ -268,17 +270,21 @@ class _BookScreenState extends State<BookScreen> {
 class Book {
   final String title;
   final List<String> authors;
-  final String? coverImage;
+  final String coverImage;
 
-  Book({required this.title, required this.authors, this.coverImage});
+  Book({
+    required this.title,
+    required this.authors,
+    required this.coverImage,
+  });
 
   factory Book.fromJson(Map<String, dynamic> json) {
     return Book(
-      title: json['title'] ?? 'ไม่มีชื่อหนังสือ',
+      title: json['title'],
       authors: List<String>.from(json['author_name'] ?? []),
-      coverImage: json['cover_i'] != null
+      coverImage: json.containsKey('cover_i')
           ? 'https://covers.openlibrary.org/b/id/${json['cover_i']}-M.jpg'
-          : null,
+          : '',
     );
   }
 }
